@@ -1,0 +1,7 @@
+<RCC>
+  <qresource prefix="/GeoFASU">
+    <file alias="main">icons/icon.png</file>
+    <file alias="converter">icons/converter.png</file>
+    <file alias="loader">icons/loader.png</file>
+  </qresource>
+</RCC>
