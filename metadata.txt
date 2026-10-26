@@ -1,16 +1,16 @@
 [general]
-name=GeoFASU_Mod
+name=GeoFASU_Ori
 qgisMinimumVersion=3.36
 supportsQt6=True
-description="Modified for field data collection, Preprocessing and Postprocessing modules, and quality checking"
-version=1.8.1
+description="Original Design field data collection, Preprocessing and Postprocessing modules, and quality checking"
+version=1.0.3
 
 # tags are comma separated with spaces allowed
 tags=Generator, Convert, python, development, developer, QField, Android, Windows, mobile, smartphone, tablet, field, fieldwork, GPS, offline, qfieldsync, simple, collaborative, checker, validation
 
 homepage=https://docs.qfield.org/get-started/
 tracker=https://github.com/opengisch/QFieldSync/issues
-repository=https://github.com/Syano18/GeoFASU_Mod
+repository=https://github.com/Syano18/GeoFASU_Ori
 icon=icons/icon.png
 
 experimental=False

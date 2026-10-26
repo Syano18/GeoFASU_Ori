@@ -111,7 +111,7 @@ class GeoFASUDialog(QDialog, FORM_CLASS):
             QCoreApplication.processEvents()
 
             # --- 4. Process and Export Data ---
-            self._export_to_geopackages(df, project_folder, filepinas_folder, validation_folder, from_tablet_folder)
+            self._export_to_geopackages(df, folder_name, project_folder, filepinas_folder, validation_folder, from_tablet_folder)
 
             self.progressBar.setValue(100)
             QCoreApplication.processEvents()
@@ -137,6 +137,8 @@ class GeoFASUDialog(QDialog, FORM_CLASS):
         # --- 1. Read the REQUIRED 'Sample SSU' sheet ---
         try:
             df_sample = pd.read_excel(csv_path, sheet_name='Sample SSU', dtype=str)
+            if df_sample is not None and not df_sample.empty:
+                df_sample['_sheet_source'] = 'Sample SSU'
         except (ValueError, KeyError):
             self.log("The required sheet 'Sample SSU' was not found in the Excel file. The process cannot continue.", "ERROR")
             return None
@@ -144,6 +146,8 @@ class GeoFASUDialog(QDialog, FORM_CLASS):
         # --- 2. Read the OPTIONAL 'Replacement SSU' sheet ---
         try:
             df_replacement = pd.read_excel(csv_path, sheet_name='Replacement SSU', dtype=str)
+            if df_replacement is not None and not df_replacement.empty:
+                df_replacement['_sheet_source'] = 'Replacement SSU'
         except (ValueError, KeyError):
             pass
 
@@ -164,12 +168,15 @@ class GeoFASUDialog(QDialog, FORM_CLASS):
         df = df.fillna("")
         return df
 
-    def _export_to_geopackages(self, df, project_folder, filepinas_folder, validation_folder, from_tablet_folder):
+    def _export_to_geopackages(self, df, folder_name, project_folder, filepinas_folder, validation_folder, from_tablet_folder):
         """
-        Iterates through the DataFrame and exports data into structured GeoPackage files.
+        Copies template selected.gpkg and populates sample points directly into it.
         """
-        crs = QgsCoordinateReferenceSystem("EPSG:4326")
-        
+        template_path = os.path.join(os.path.dirname(__file__), "selected.gpkg")
+        if not os.path.exists(template_path):
+            self.log(f"Template GeoPackage 'selected.gpkg' not found: {template_path}", "ERROR")
+            raise FileNotFoundError(f"Template GeoPackage 'selected.gpkg' not found: {template_path}")
+
         # Check for required grouping columns
         required_cols = ['Mun_name', 'Replicate_Number']
         if not all(col in df.columns for col in required_cols):
@@ -195,40 +202,91 @@ class GeoFASUDialog(QDialog, FORM_CLASS):
             rep_idx = 0
 
             for rep_num, group_rep in reps:
-                rep_folder_path = os.path.join(mun_project_path, f"R{str(rep_num)}")
+                rep_str = str(rep_num).strip()
+                if not rep_str.upper().startswith("R"):
+                    rep_str = f"R{rep_str}"
+
+                rep_folder_path = os.path.join(mun_project_path, rep_str)
                 if os.path.exists(rep_folder_path):
                     shutil.rmtree(rep_folder_path)
-                os.makedirs(rep_folder_path)
+                os.makedirs(rep_folder_path, exist_ok=True)
 
-                # Create an in-memory layer
-                mem_layer = QgsVectorLayer("Point?crs=EPSG:4326", f"{mun_name}_{rep_num}", "memory")
-                provider = mem_layer.dataProvider()
+                out_filename = f"{folder_name}_{mun_name}_Selected SSU_{rep_str}.gpkg"
+                out_path = os.path.join(rep_folder_path, out_filename)
 
-                # Define fields from DataFrame columns (excluding WKT)
-                fields = QgsFields()
-                attr_cols = [col for col in group_rep.columns if col != "WKT"]
-                for col in attr_cols:
-                    fields.append(QgsField(col, QVariant.String))
-                provider.addAttributes(fields)
-                mem_layer.updateFields()
+                # Copy template selected.gpkg
+                shutil.copyfile(template_path, out_path)
 
-                # Add features to the layer
+                # Open destination layer and populate features directly into it
+                dest_layer = QgsVectorLayer(out_path, f"{mun_name}_{rep_str}", "ogr")
+                if not dest_layer.isValid():
+                    self.log(f"Failed to open destination GeoPackage: {out_path}", "ERROR")
+                    continue
+
+                layer_fields = dest_layer.fields()
+                field_map = {f.name().lower(): f.name() for f in layer_fields}
+
                 features = []
                 for _, row in group_rep.iterrows():
-                    feat = QgsFeature()
-                    feat.setAttributes([row[col] for col in attr_cols])
-                    geom = QgsGeometry.fromWkt(row["WKT"])
-                    
-                    if geom and geom.isGeosValid():
-                        feat.setGeometry(geom)
-                        features.append(feat)
-                
-                provider.addFeatures(features)
-                mem_layer.updateExtents()
+                    wkt_val = row.get("WKT", None)
+                    if not wkt_val or pd.isna(wkt_val):
+                        continue
+                    geom = QgsGeometry.fromWkt(str(wkt_val).strip())
+                    if not geom or not geom.isGeosValid():
+                        continue
 
-                # Write the memory layer to a GeoPackage file
-                out_path = os.path.join(rep_folder_path, "Selected SSU_Ref.gpkg")
-                QgsVectorFileWriter.writeAsVectorFormat(mem_layer, out_path, "UTF-8", crs, "GPKG")
+                    feat = QgsFeature(layer_fields)
+                    feat.setGeometry(geom)
+
+                    for col in group_rep.columns:
+                        if col in ("WKT", "_sheet_source"):
+                            continue
+                        col_lower = str(col).strip().lower()
+                        if col_lower in field_map:
+                            target_field = field_map[col_lower]
+                            val = row[col]
+                            if pd.notna(val) and str(val).strip() != "":
+                                if target_field == "Selected_SSU":
+                                    s_val = str(val).strip()
+                                    if s_val in ("1", "1.0"):
+                                        val = "1 - Sample SSU"
+                                    elif s_val in ("2", "2.0"):
+                                        val = "2 - Replacement SSU"
+                                    elif s_val in ("3", "3.0"):
+                                        val = "3 - Additional Replacement SSU"
+                                feat.setAttribute(target_field, val)
+
+                    # Ensure Selected_SSU is set
+                    if "selected_ssu" in field_map:
+                        target_ssu = field_map["selected_ssu"]
+                        curr_ssu = feat.attribute(target_ssu)
+                        if curr_ssu is None or str(curr_ssu).strip() in ("", "NULL", "None"):
+                            sheet_src = row.get("_sheet_source", "Sample SSU")
+                            if sheet_src == "Replacement SSU":
+                                feat.setAttribute(target_ssu, "2 - Replacement SSU")
+                            else:
+                                feat.setAttribute(target_ssu, "1 - Sample SSU")
+
+                    # Ensure inCentroid is set (default 2 for valid WKT)
+                    if "incentroid" in field_map:
+                        target_inc = field_map["incentroid"]
+                        curr_inc = feat.attribute(target_inc)
+                        if curr_inc is None or str(curr_inc).strip() in ("", "NULL", "None"):
+                            feat.setAttribute(target_inc, 2)
+
+                    # Ensure orig_wkt is set
+                    if "orig_wkt" in field_map:
+                        target_orig = field_map["orig_wkt"]
+                        curr_orig = feat.attribute(target_orig)
+                        if curr_orig is None or str(curr_orig).strip() in ("", "NULL", "None"):
+                            feat.setAttribute(target_orig, str(wkt_val).strip())
+
+                    features.append(feat)
+
+                provider = dest_layer.dataProvider()
+                provider.addFeatures(features)
+                dest_layer.updateExtents()
+                del dest_layer
 
                 rep_idx += 1
                 # Responsive granular progress calculation

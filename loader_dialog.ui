@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>880</width>
-    <height>500</height>
+    <height>540</height>
    </rect>
   </property>
   <property name="minimumSize">
@@ -17,7 +17,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>GeoFASU_Mod - Load and Generate QField</string>
+   <string>GeoFASU_Ori - Load and Generate QField</string>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
    <property name="spacing">
@@ -114,6 +114,16 @@
      </item>
      <item>
       <widget class="QComboBox" name="comboxRep"/>
+     </item>
+     <item>
+      <widget class="QLabel" name="label_psu">
+       <property name="text">
+        <string>Select PSU Name (Optional):</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="comboxPSU"/>
      </item>
      <item>
       <widget class="QPushButton" name="loadbtn">

@@ -31,7 +31,7 @@ class GeoFASU:
         icons_path = Path(__file__).parent / "icons"
 
         # Create custom top-level menu
-        self.menu = QMenu("&GeoFASU_Mod", self.iface.mainWindow())
+        self.menu = QMenu("&GeoFASU_Ori", self.iface.mainWindow())
 
         # 1. Standalone Folder Creator Action
         self.folder_creator_action = QAction(
@@ -79,7 +79,7 @@ class GeoFASU:
         if hasattr(self.iface, 'addToolBarIcon'):
             self.main_action = QAction(
                 QIcon(str(icons_path / "icon.png")),
-                "GeoFASU_Mod",
+                "GeoFASU_Ori",
                 self.iface.mainWindow()
             )
             self.main_action.triggered.connect(lambda: self.run_preprocessing(0))

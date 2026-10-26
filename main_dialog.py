@@ -1,6 +1,6 @@
 # Developer: TechCraft by Chano
 # email: c.dacpano@psa.gov.ph
-# GeoFASU_Mod - Preprocessing and Postprocessing Dialogs
+# GeoFASU_Ori - Preprocessing and Postprocessing Dialogs
 
 import os
 from pathlib import Path
@@ -102,7 +102,7 @@ class PreprocessingDialog(QDialog, FORM_CLASS):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setupUi(self)
-        self.setWindowTitle("GeoFASU_Mod - Preprocessing")
+        self.setWindowTitle("GeoFASU_Ori - Preprocessing")
         apply_modern_style(self)
         apply_responsive_geometry(self, preferred_w=920, preferred_h=620, min_w=640, min_h=400)
 
@@ -200,7 +200,7 @@ class PostprocessingDialog(QDialog, FORM_CLASS):
         super().__init__(parent)
         self.iface = iface
         self.setupUi(self)
-        self.setWindowTitle("GeoFASU_Mod - Postprocessing")
+        self.setWindowTitle("GeoFASU_Ori - Postprocessing")
         apply_modern_style(self)
         apply_responsive_geometry(self, preferred_w=920, preferred_h=640, min_w=640, min_h=420)
 

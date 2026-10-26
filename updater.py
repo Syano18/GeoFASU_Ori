@@ -13,12 +13,12 @@ from qgis.PyQt.QtWidgets import QMessageBox, QProgressDialog
 from qgis.PyQt.QtCore import Qt, QCoreApplication
 
 # Set your GitHub repository here ("owner/repository")
-GITHUB_REPO = "Syano18/GeoFASU_Mod"
+GITHUB_REPO = "Syano18/GeoFASU_Ori"
 
 
 def get_metadata_info():
     metadata_path = Path(__file__).parent / "metadata.txt"
-    info = {"name": "GeoFASU_Mod", "version": "0.0.0", "repository": GITHUB_REPO}
+    info = {"name": "GeoFASU_Ori", "version": "0.0.0", "repository": GITHUB_REPO}
     if not metadata_path.exists():
         return info
 
@@ -44,7 +44,7 @@ def parse_version_tuple(v_str):
 
 def check_for_updates(parent=None, silent_if_latest=False):
     meta = get_metadata_info()
-    plugin_name = meta.get("name", "GeoFASU_Mod")
+    plugin_name = meta.get("name", "GeoFASU_Ori")
     local_version = meta.get("version", "0.0.0")
     repo = meta.get("repository", GITHUB_REPO)
 

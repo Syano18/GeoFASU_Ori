@@ -1,6 +1,6 @@
 # Developer: TechCraft by Chano
 # email: c.dacpano@psa.gov.ph
-# GeoFASU_Mod - Load and Generate QField Module
+# GeoFASU_Ori - Load and Generate QField Module
 
 import os
 import sys
@@ -82,12 +82,17 @@ class LoaderDialog(QDialog, FORM_CLASS):
         self.comboxNOS.setPlaceholderText("-- Select Type of Survey --")
         self.comboxMun.setPlaceholderText("-- Select City/Municipality --")
         self.comboxRep.setPlaceholderText("-- Select Replicate Number --")
+        if hasattr(self, 'comboxPSU'):
+            self.comboxPSU.setPlaceholderText("-- Select PSU Name (Optional) --")
+            self.comboxPSU.addItem("-- All PSUs --", "")
 
         # Signals
         self.fileWidget.fileChanged.connect(self.populate_nos_list)
         self.comboxNOS.currentIndexChanged.connect(self.update_mun_list)
         self.comboxMun.currentIndexChanged.connect(self.update_rep_list)
         self.comboxRep.currentIndexChanged.connect(self.on_rep_change)
+        if hasattr(self, 'comboxPSU'):
+            self.comboxPSU.currentIndexChanged.connect(self.on_psu_change)
         self.loadbtn.clicked.connect(self.load_layers)
         self.aplqml.clicked.connect(self.apply_styles)
         self.genrate.clicked.connect(self.export_qfield_project)
@@ -104,6 +109,50 @@ class LoaderDialog(QDialog, FORM_CLASS):
         s = (s or "").strip()
         s = re.sub(r'[<>:"/\\|?*]+', "_", s)
         return s.rstrip(" .")
+
+    def find_layer_field(self, layer, primary_name: str, fallback_names=None):
+        """Case-insensitive field locator with fallbacks."""
+        if not layer or not layer.isValid():
+            return None
+        names = [primary_name] + (fallback_names or [])
+        field_names = [f.name() for f in layer.fields()]
+        for target in names:
+            for fld in field_names:
+                if fld.lower() == target.lower():
+                    return fld
+        return None
+
+    def build_sample_filter_expression(self, layer, rep: str, psu: str = None) -> str:
+        """
+        Builds a SQL subset expression for the Selected SSU layer
+        based on Replicate Number and/or PSU Name.
+        """
+        if not layer or not layer.isValid():
+            return ""
+
+        clauses = []
+
+        # 1. Filter by Replicate Number
+        if rep:
+            f_rep = self.find_layer_field(layer, "Replicate_Number", ["Replicate", "Rep_No", "Rep"])
+            if f_rep:
+                rep_str = str(rep).strip()
+                match_vals = {rep_str, rep_str.upper(), rep_str.lower()}
+                digits = re.sub(r'\D', '', rep_str)
+                if digits:
+                    n = int(digits)
+                    match_vals.update([str(n), f"{n:02d}", f"R{n}", f"r{n}", f"R{n:02d}", f"r{n:02d}"])
+                escaped = ", ".join("'" + v.replace("'", "''") + "'" for v in sorted(match_vals))
+                clauses.append(f'"{f_rep}" IN ({escaped})')
+
+        # 2. Filter by PSU Name (if specified and not "-- All PSUs --")
+        if psu and str(psu).strip() and not str(psu).strip().startswith("--"):
+            f_psu = self.find_layer_field(layer, "PSU_Name", ["PSU_number", "PSU", "psu_name"])
+            if f_psu:
+                psu_clean = str(psu).strip().replace("'", "''")
+                clauses.append(f'"{f_psu}" = \'{psu_clean}\'')
+
+        return " AND ".join(clauses)
 
     def log(self, message: str, level: str = "INFO"):
         """Appends a line of text to the logs widget with level indicator."""
@@ -153,7 +202,10 @@ class LoaderDialog(QDialog, FORM_CLASS):
 
     def reset_fields(self):
         """Resets all input fields and progress bar to their default state."""
-        for w in (self.fileWidget, self.comboxNOS, self.comboxMun, self.comboxRep, self.loadbtn):
+        widgets = [self.fileWidget, self.comboxNOS, self.comboxMun, self.comboxRep, self.loadbtn]
+        if hasattr(self, 'comboxPSU'):
+            widgets.append(self.comboxPSU)
+        for w in widgets:
             w.setEnabled(True)
 
         default_ref = r"C:\PSA-GIS\GeoFASU\Kalinga\Project files"
@@ -161,6 +213,13 @@ class LoaderDialog(QDialog, FORM_CLASS):
         self.comboxNOS.blockSignals(True)
         self.comboxMun.blockSignals(True)
         self.comboxRep.blockSignals(True)
+        if hasattr(self, 'comboxPSU'):
+            self.comboxPSU.blockSignals(True)
+            self.comboxPSU.clear()
+            self.comboxPSU.setPlaceholderText("-- Select PSU Name (Optional) --")
+            self.comboxPSU.addItem("-- All PSUs --", "")
+            self.comboxPSU.setCurrentIndex(0)
+            self.comboxPSU.blockSignals(False)
         self.comboxNOS.clear()
         self.comboxMun.clear()
         self.comboxRep.clear()
@@ -202,13 +261,13 @@ class LoaderDialog(QDialog, FORM_CLASS):
         self.reset_all()
         super().reject()
 
-    def get_reference_layer(self, layer_name: str):
+    def get_sample_layer(self):
         root = QgsProject.instance().layerTreeRoot()
-        ref_group = root.findGroup("Reference Layer")
-        if not ref_group:
+        samples_group = root.findGroup("Samples")
+        if not samples_group:
             return None
-        for child in ref_group.children():
-            if child.name() == layer_name:
+        for child in samples_group.children():
+            if isinstance(child, QgsLayerTreeLayer) and "Selected SSU" in child.name() and child.layer():
                 return child.layer()
         return None
 
@@ -222,6 +281,11 @@ class LoaderDialog(QDialog, FORM_CLASS):
         self.comboxNOS.clear()
         self.comboxMun.clear()
         self.comboxRep.clear()
+        if hasattr(self, 'comboxPSU'):
+            self.comboxPSU.blockSignals(True)
+            self.comboxPSU.clear()
+            self.comboxPSU.addItem("-- All PSUs --", "")
+            self.comboxPSU.blockSignals(False)
         self.aplqml.setEnabled(False)
         self.genrate.setEnabled(False)
         self.progbar.setValue(0)
@@ -251,6 +315,11 @@ class LoaderDialog(QDialog, FORM_CLASS):
 
         self.comboxMun.clear()
         self.comboxRep.clear()
+        if hasattr(self, 'comboxPSU'):
+            self.comboxPSU.blockSignals(True)
+            self.comboxPSU.clear()
+            self.comboxPSU.addItem("-- All PSUs --", "")
+            self.comboxPSU.blockSignals(False)
         nos = self.comboxNOS.currentText().strip()
         has_match = False
         if nos:
@@ -274,6 +343,11 @@ class LoaderDialog(QDialog, FORM_CLASS):
         current_rep = self.comboxRep.currentText().strip()
         self.comboxRep.blockSignals(True)
         self.comboxRep.clear()
+        if hasattr(self, 'comboxPSU'):
+            self.comboxPSU.blockSignals(True)
+            self.comboxPSU.clear()
+            self.comboxPSU.addItem("-- All PSUs --", "")
+            self.comboxPSU.blockSignals(False)
         nos = self.comboxNOS.currentText().strip()
         mun = self.comboxMun.currentText().strip()
         if nos and mun:
@@ -295,6 +369,85 @@ class LoaderDialog(QDialog, FORM_CLASS):
         if self.comboxRep.currentText().strip():
             self.aplqml.setEnabled(False)
             self.genrate.setEnabled(False)
+            self.update_psu_list()
+        else:
+            if hasattr(self, 'comboxPSU'):
+                self.comboxPSU.blockSignals(True)
+                self.comboxPSU.clear()
+                self.comboxPSU.addItem("-- All PSUs --", "")
+                self.comboxPSU.blockSignals(False)
+
+    def update_psu_list(self):
+        if not hasattr(self, 'comboxPSU'):
+            return
+
+        current_psu = self.comboxPSU.currentText().strip()
+        self.comboxPSU.blockSignals(True)
+        self.comboxPSU.clear()
+        self.comboxPSU.addItem("-- All PSUs --", "")
+
+        nos = self.comboxNOS.currentText().strip()
+        mun = self.comboxMun.currentText().strip()
+        rep = self.comboxRep.currentText().strip()
+
+        psu_list = []
+        if nos and mun and rep:
+            rep_dir = os.path.join(self.fileWidget.filePath().strip(), 'Projects', nos, mun, rep)
+            gpkg_path = os.path.join(rep_dir, f"{nos}_{mun}_Selected SSU_{rep}.gpkg")
+            if os.path.exists(gpkg_path):
+                import sqlite3
+                try:
+                    conn = sqlite3.connect(gpkg_path)
+                    cur = conn.cursor()
+                    cur.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'gpkg_%' AND name NOT LIKE 'rtree_%'")
+                    tables = [row[0] for row in cur.fetchall()]
+                    target_table = "selected" if "selected" in tables else (tables[0] if tables else None)
+                    if target_table:
+                        cur.execute(f"PRAGMA table_info(\"{target_table}\")")
+                        cols = [c[1] for c in cur.fetchall()]
+                        psu_col = next((c for c in cols if c.lower() in ("psu_name", "psu", "psu_number")), None)
+                        if psu_col:
+                            cur.execute(f"SELECT DISTINCT \"{psu_col}\" FROM \"{target_table}\" WHERE \"{psu_col}\" IS NOT NULL AND TRIM(\"{psu_col}\") != '' ORDER BY \"{psu_col}\"")
+                            psu_list = [str(r[0]).strip() for r in cur.fetchall() if r[0] is not None and str(r[0]).strip()]
+                    conn.close()
+                except Exception as e:
+                    print(f"Error reading PSUs from {gpkg_path}: {e}")
+
+        # If not found from file, check if layer is currently loaded in QGIS project
+        if not psu_list:
+            layer = self.get_sample_layer()
+            if layer and layer.isValid():
+                f_psu = self.find_layer_field(layer, "PSU_Name", ["PSU_number", "PSU"])
+                if f_psu:
+                    orig_filter = layer.subsetString()
+                    layer.setSubsetString("")
+                    psu_list = sorted({str(f[f_psu]).strip() for f in layer.getFeatures() if f[f_psu] not in (None, "") and str(f[f_psu]).strip()})
+                    layer.setSubsetString(orig_filter)
+
+        for psu_name in psu_list:
+            self.comboxPSU.addItem(psu_name, psu_name)
+
+        if current_psu and current_psu in psu_list:
+            self.comboxPSU.setCurrentText(current_psu)
+        else:
+            self.comboxPSU.setCurrentIndex(0)
+
+        self.comboxPSU.blockSignals(False)
+
+    def on_psu_change(self):
+        layer = self.get_sample_layer()
+        if layer and layer.isValid():
+            rep = self.comboxRep.currentText().strip()
+            psu = self.comboxPSU.currentText().strip() if hasattr(self, 'comboxPSU') else ""
+            expr = self.build_sample_filter_expression(layer, rep, psu)
+            layer.setSubsetString(expr)
+            layer.updateExtents()
+            if self.iface and self.iface.mapCanvas():
+                self.iface.mapCanvas().refresh()
+
+            cnt = layer.featureCount()
+            psu_info = psu if (psu and not psu.startswith("--")) else "All PSUs"
+            self.log(f"Layer filter updated: {psu_info} (Displaying: {cnt} features)", "INFO")
 
     # ---------- Load ----------
     def load_layers(self):
@@ -327,7 +480,7 @@ class LoaderDialog(QDialog, FORM_CLASS):
             # Create group structure in QGIS project
             root = QgsProject.instance().layerTreeRoot()
             groups = {}
-            for gname in ['Tracklog', 'Samples', 'Reference Layer', 'Base Layer', 'Basemap']:
+            for gname in ['Tracklog', 'Samples', 'Base Layer', 'Basemap']:
                 existing_grp = root.findGroup(gname)
                 if existing_grp:
                     root.removeChildNode(existing_grp)
@@ -428,29 +581,10 @@ class LoaderDialog(QDialog, FORM_CLASS):
                 if isinstance(child, QgsLayerTreeLayer):
                     child.setExpanded(False)
 
-            self.progbar.setValue(55)
+            self.progbar.setValue(60)
             QCoreApplication.processEvents()
 
-            # 3. Reference Layer
-            ref_path = os.path.join(rep_dir, "Selected SSU_Ref.gpkg")
-            if not os.path.exists(ref_path):
-                alt_path = os.path.join(rep_dir, f"{nos}_{mun}_Selected SSU_{rep}.gpkg")
-                if os.path.exists(alt_path):
-                    ref_path = alt_path
-                else:
-                    self.show_error(f"Reference file not found:\n{ref_path}")
-                    return
-            ref_layer = QgsVectorLayer(ref_path, "Selected SSU_Ref", "ogr")
-            if not ref_layer.isValid():
-                self.show_error(f"Invalid reference layer:\n{ref_path}")
-                return
-            QgsProject.instance().addMapLayer(ref_layer, False)
-            groups['Reference Layer'].addLayer(ref_layer)
-
-            self.progbar.setValue(65)
-            QCoreApplication.processEvents()
-
-            # 4. Copy and load project sample and tracklog layers
+            # 3. Copy and load project sample and tracklog layers
             file_ops = [
                 ("selected.gpkg",   f"{nos}_{mun}_Selected SSU_{rep}.gpkg", "Samples",
                  f"{nos}_{mun}_Selected SSU_{rep}"),
@@ -459,26 +593,27 @@ class LoaderDialog(QDialog, FORM_CLASS):
                 ("tracklog.gpkg",   "tracklog.gpkg", "Tracklog", "tracklog"),
             ]
 
-            step_inc = 25 / len(file_ops)
+            step_inc = 30 / len(file_ops)
             for idx, (src_name, dest_name, group_name, layer_name) in enumerate(file_ops):
                 src_path = os.path.join(self.plugin_dir, src_name)
                 dest_path = os.path.join(rep_dir, dest_name)
-                if not os.path.exists(src_path):
-                    self.show_error(f"Missing source file: {src_path}")
-                    return
-                shutil.copyfile(src_path, dest_path)
+                if not os.path.exists(dest_path):
+                    if not os.path.exists(src_path):
+                        self.show_error(f"Missing source file: {src_path}")
+                        return
+                    shutil.copyfile(src_path, dest_path)
                 lyr = QgsVectorLayer(dest_path, layer_name, "ogr")
                 if not lyr.isValid():
                     self.show_error(f"Invalid layer copied to: {dest_path}")
                     return
                 QgsProject.instance().addMapLayer(lyr, False)
                 groups[group_name].addLayer(lyr)
-                self.progbar.setValue(int(65 + (idx + 1) * step_inc))
+                self.progbar.setValue(int(60 + (idx + 1) * step_inc))
                 QCoreApplication.processEvents()
 
-            # Enable snapping on Selected SSU_Ref
+            # Enable snapping on Selected SSU layer
             layer = next((lyr for lyr in QgsProject.instance().mapLayers().values()
-                          if lyr.name() == "Selected SSU_Ref"), None)
+                          if "Selected SSU" in lyr.name()), None)
             if layer:
                 cfg = QgsProject.instance().snappingConfig()
                 cfg.setEnabled(True)
@@ -496,6 +631,21 @@ class LoaderDialog(QDialog, FORM_CLASS):
 
                 cfg.setIndividualLayerSettings(layer, ils)
                 QgsProject.instance().setSnappingConfig(cfg)
+
+            # Filter Selected SSU layer by Replicate No. and/or PSU Name
+            smp_layer = self.get_sample_layer()
+            if smp_layer and smp_layer.isValid():
+                if hasattr(self, 'comboxPSU') and self.comboxPSU.count() <= 1:
+                    self.update_psu_list()
+
+                psu_selected = self.comboxPSU.currentText().strip() if hasattr(self, 'comboxPSU') else ""
+                filter_expr = self.build_sample_filter_expression(smp_layer, rep, psu_selected)
+                if filter_expr:
+                    smp_layer.setSubsetString(filter_expr)
+                    smp_layer.updateExtents()
+                    cnt = smp_layer.featureCount()
+                    psu_info = f" and PSU '{psu_selected}'" if (psu_selected and not psu_selected.startswith("--")) else ""
+                    self.log(f"Filtered Selected SSU: Replicate {rep}{psu_info} ({cnt} features displayed).", "INFO")
 
             self.aplqml.setEnabled(True)
             self.genrate.setEnabled(False)
@@ -558,7 +708,7 @@ class LoaderDialog(QDialog, FORM_CLASS):
             root = QgsProject.instance().layerTreeRoot()
             style_dir = os.path.join(self.plugin_dir, "QML")
 
-            required_groups = ["Basemap", "Reference Layer", "Samples", "Tracklog", "Base Layer"]
+            required_groups = ["Basemap", "Samples", "Tracklog", "Base Layer"]
             for gname in required_groups:
                 group = root.findGroup(gname)
                 if not group or not any(
@@ -579,20 +729,20 @@ class LoaderDialog(QDialog, FORM_CLASS):
                     if isinstance(child, QgsLayerTreeLayer):
                         lyr = child.layer()
                         if lyr and (keyword in lyr.name()):
+                            orig_subset = lyr.subsetString()
                             lyr.loadNamedStyle(qml_path)
+                            if orig_subset:
+                                lyr.setSubsetString(orig_subset)
                             lyr.triggerRepaint()
 
             self.progbar.setValue(25)
             QCoreApplication.processEvents()
             apply_qml("Base Layer", "", "Barangay.qml")
-            self.progbar.setValue(45)
-            QCoreApplication.processEvents()
-            apply_qml("Reference Layer", "", "Reference.qml")
-            self.progbar.setValue(65)
+            self.progbar.setValue(50)
             QCoreApplication.processEvents()
             apply_qml("Samples", "_Selected SSU", "Sample.qml")
             apply_qml("Samples", "_Additional", "Additional.qml")
-            self.progbar.setValue(85)
+            self.progbar.setValue(80)
             QCoreApplication.processEvents()
             apply_qml("Tracklog", "", "Tracklog.qml")
 
@@ -637,12 +787,13 @@ class LoaderDialog(QDialog, FORM_CLASS):
             self.log("Please ensure Type of Survey, Municipality, and Replicate Number are selected.", "WARNING")
             return
 
-        layer = self.get_reference_layer("Selected SSU_Ref")
+        layer = self.get_sample_layer()
         single_psu_only = False
         single_psu_name = None
         selected_psus_override = None
         if layer:
-            idx = layer.fields().lookupField("PSU_Name")
+            f_psu_field = self.find_layer_field(layer, "PSU_Name", ["PSU_number", "PSU"])
+            idx = layer.fields().lookupField(f_psu_field) if f_psu_field else -1
             if idx != -1:
                 psu_names = sorted({self._clean(str(f[idx])) for f in layer.getFeatures() if f[idx] not in (None, "")})
                 if len(psu_names) == 1:
@@ -678,6 +829,13 @@ class LoaderDialog(QDialog, FORM_CLASS):
         orig_proj_filename = project.fileName()
         orig_paths_setting = project.readBoolEntry("Paths", "/Absolute", False)[0]
         project.writeEntry("Paths", "/Absolute", True)
+        project.writeEntry("qfieldsync", "/baseMapTilesMinZoomLevel", 10)
+        project.writeEntry("qfieldsync", "/baseMapTilesMaxZoomLevel", 18)
+        if self.iface and self.iface.mapCanvas():
+            canvas_obj = self.iface.mapCanvas()
+            if canvas_obj.extent() and not canvas_obj.extent().isEmpty():
+                project.writeEntry("qfieldsync", "/areaOfInterest", canvas_obj.extent().asWktPolygon())
+                project.writeEntry("qfieldsync", "/areaOfInterestCrs", canvas_obj.mapSettings().destinationCrs().authid())
         try:
             project.write(template_proj_path)
         finally:
@@ -705,35 +863,52 @@ class LoaderDialog(QDialog, FORM_CLASS):
             temp_project.read(template_proj_path)
             temp_project.setFileName(str(target_dir / f"{inner_folder_name}.qgs"))
             temp_project.writeEntry("Paths", "/Absolute", False)
+            temp_project.writeEntry("qfieldsync", "/baseMapTilesMinZoomLevel", 10)
+            temp_project.writeEntry("qfieldsync", "/baseMapTilesMaxZoomLevel", 18)
+            if self.iface and self.iface.mapCanvas():
+                canvas_obj = self.iface.mapCanvas()
+                if canvas_obj.extent() and not canvas_obj.extent().isEmpty():
+                    temp_project.writeEntry("qfieldsync", "/areaOfInterest", canvas_obj.extent().asWktPolygon())
+                    temp_project.writeEntry("qfieldsync", "/areaOfInterestCrs", canvas_obj.mapSettings().destinationCrs().authid())
 
             ref_extent = None
             ref_layer_obj = None
             root = temp_project.layerTreeRoot()
             base_layer_for_mask = None
             matching_features = []
+            smp_layer = None
 
-            if psu_filter:
-                ref_group = root.findGroup("Reference Layer")
-                if ref_group:
-                    for child in ref_group.children():
-                        if child.name() == "Selected SSU_Ref" and child.layer():
-                            ref_layer = child.layer()
-                            ref_layer.setSubsetString(f"\"PSU_Name\" = '{psu_filter}'")
-                            ref_layer.updateExtents()
-                            ref_extent = ref_layer.extent()
-                            ref_layer_obj = ref_layer
+            # Remove Reference Layer from temp_project if present
+            ref_grp = root.findGroup("Reference Layer")
+            if ref_grp:
+                root.removeChildNode(ref_grp)
+
+            samples_group = root.findGroup("Samples")
+            if samples_group:
+                for child in samples_group.children():
+                    if isinstance(child, QgsLayerTreeLayer) and "Selected SSU" in child.name() and child.layer():
+                        smp_layer = child.layer()
+                        expr = self.build_sample_filter_expression(smp_layer, rep, psu_filter)
+                        if expr:
+                            smp_layer.setSubsetString(expr)
+                            smp_layer.updateExtents()
+
+                        if psu_filter:
+                            ref_extent = smp_layer.extent()
+                            ref_layer_obj = smp_layer
 
                             try:
                                 from qgis.core import QgsRectangle, QgsReferencedRectangle
                                 ext_copy = QgsRectangle(ref_extent)
                                 ext_copy.scale(1.2)
-                                ref_rect = QgsReferencedRectangle(ext_copy, ref_layer.crs())
+                                ref_rect = QgsReferencedRectangle(ext_copy, smp_layer.crs())
                                 temp_project.viewSettings().setDefaultViewExtent(ref_rect)
                                 temp_project.viewSettings().setPresetExtent(ref_rect)
                             except Exception:
                                 pass
-                            break
+                        break
 
+            if psu_filter:
                 base_group = root.findGroup("Base Layer")
                 if base_group:
                     for child in base_group.children():
@@ -815,7 +990,7 @@ class LoaderDialog(QDialog, FORM_CLASS):
             if matching_features:
                 mask_features = matching_features
             elif base_layer_for_mask and base_layer_for_mask.isValid():
-                ref_lyr = self.get_reference_layer("Selected SSU_Ref")
+                ref_lyr = self.get_sample_layer()
                 if ref_lyr and ref_lyr.isValid():
                     from qgis.core import QgsCoordinateTransform, QgsGeometry
                     xform = None
@@ -862,10 +1037,40 @@ class LoaderDialog(QDialog, FORM_CLASS):
                         if mask_features:
                             mask_key = "_".join(sorted(str(f["name"] if "name" in [fld.name() for fld in base_layer_for_mask.fields()] else f.id()) for f in mask_features))
 
-                        dest_mbtiles_path = str(target_dir / f"{raster_layer.name()}.mbtiles")
+                        # Determine mbtiles filename from GEOID (from the selected sample layer)
+                        mbtiles_base_name = None
+                        target_smp = smp_layer if (smp_layer and smp_layer.isValid()) else self.get_sample_layer()
+                        if target_smp and target_smp.isValid():
+                            geoid_field = self.find_layer_field(target_smp, "GEOID", ["geoid", "Geoid", "GEO_ID"])
+                            if geoid_field:
+                                idx_geoid = target_smp.fields().lookupField(geoid_field)
+                                if idx_geoid != -1:
+                                    for feat in target_smp.getFeatures():
+                                        val = feat[idx_geoid]
+                                        if val not in (None, "") and str(val).strip():
+                                            mbtiles_base_name = self._clean(str(val))
+                                            break
+
+                        mbtiles_filename = f"{mbtiles_base_name}.mbtiles" if mbtiles_base_name else f"{raster_layer.name()}.mbtiles"
+                        dest_mbtiles_path = str(target_dir / mbtiles_filename)
+                        layer_disp_name = mbtiles_base_name if mbtiles_base_name else raster_layer.name()
+
+                        if mbtiles_base_name:
+                            old_mbtiles = target_dir / f"{raster_layer.name()}.mbtiles"
+                            if old_mbtiles.exists() and str(old_mbtiles) != dest_mbtiles_path:
+                                try:
+                                    old_mbtiles.unlink(missing_ok=True)
+                                except Exception:
+                                    pass
+
+                        canvas = self.iface.mapCanvas() if hasattr(self, 'iface') and self.iface else None
+                        extent_tag = ""
+                        if canvas and canvas.extent() and not canvas.extent().isEmpty():
+                            ce = canvas.extent()
+                            extent_tag = f"_ext_{int(ce.xMinimum())}_{int(ce.yMinimum())}_{int(ce.xMaximum())}_{int(ce.yMaximum())}"
 
                         safe_mask_key = re.sub(r'[^a-zA-Z0-9_\-]', '_', str(mask_key or "default"))
-                        cache_mbtiles_path = cache_dir / f"{mun}_{raster_layer.name()}_{safe_mask_key}.mbtiles"
+                        cache_mbtiles_path = cache_dir / f"{mun}_{raster_layer.name()}_{safe_mask_key}{extent_tag}_z10_18.mbtiles"
 
                         def is_cache_valid(cp, sp):
                             if not cp.exists() or cp.stat().st_size == 0:
@@ -876,13 +1081,22 @@ class LoaderDialog(QDialog, FORM_CLASS):
                                         return False
                                 except Exception:
                                     pass
+                            try:
+                                import sqlite3
+                                con = sqlite3.connect(str(cp))
+                                row = con.cursor().execute("SELECT value FROM metadata WHERE name='minzoom'").fetchone()
+                                con.close()
+                                if not row or str(row[0]) != '10':
+                                    return False
+                            except Exception:
+                                return False
                             return True
 
                         # Fast path 1: Reuse already-clipped MBTiles if identical mask features were processed in this batch
                         if mask_key and mask_key in mbtiles_cache and os.path.exists(mbtiles_cache[mask_key]):
                             set_prog(35, "Reusing cached basemap...")
                             shutil.copyfile(mbtiles_cache[mask_key], dest_mbtiles_path)
-                            new_raster = QgsRasterLayer(dest_mbtiles_path, raster_layer.name(), "gdal")
+                            new_raster = QgsRasterLayer(dest_mbtiles_path, layer_disp_name, "gdal")
                             if new_raster.isValid():
                                 temp_project.addMapLayer(new_raster, False)
                                 basemap_group.insertLayer(0, new_raster)
@@ -895,7 +1109,7 @@ class LoaderDialog(QDialog, FORM_CLASS):
                             shutil.copyfile(str(cache_mbtiles_path), dest_mbtiles_path)
                             if mask_key:
                                 mbtiles_cache[mask_key] = dest_mbtiles_path
-                            new_raster = QgsRasterLayer(dest_mbtiles_path, raster_layer.name(), "gdal")
+                            new_raster = QgsRasterLayer(dest_mbtiles_path, layer_disp_name, "gdal")
                             if new_raster.isValid():
                                 temp_project.addMapLayer(new_raster, False)
                                 basemap_group.insertLayer(0, new_raster)
@@ -935,8 +1149,26 @@ class LoaderDialog(QDialog, FORM_CLASS):
                                 mask_memory_layer, temp_mask_path, "UTF-8", raster_crs, "GPKG"
                             )
 
-                            extent = mask_memory_layer.extent()
-                            bounds = [extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()]
+                            # Determine bounds: prioritize current map canvas extent
+                            canvas = self.iface.mapCanvas() if hasattr(self, 'iface') and self.iface else None
+                            mbtiles_extent = None
+                            use_canvas_crop = False
+                            if canvas:
+                                c_ext = canvas.extent()
+                                if c_ext and not c_ext.isEmpty():
+                                    c_crs = canvas.mapSettings().destinationCrs()
+                                    if c_crs.isValid() and raster_crs.isValid() and c_crs != raster_crs:
+                                        from qgis.core import QgsCoordinateTransform
+                                        xform_canvas = QgsCoordinateTransform(c_crs, raster_crs, temp_project.transformContext())
+                                        mbtiles_extent = xform_canvas.transformBoundingBox(c_ext)
+                                    else:
+                                        mbtiles_extent = c_ext
+                                    use_canvas_crop = True
+
+                            if not mbtiles_extent or mbtiles_extent.isEmpty():
+                                mbtiles_extent = mask_memory_layer.extent()
+
+                            bounds = [mbtiles_extent.xMinimum(), mbtiles_extent.yMinimum(), mbtiles_extent.xMaximum(), mbtiles_extent.yMaximum()]
 
                             temp_tif_path = os.path.join(
                                 tempfile.gettempdir(),
@@ -958,7 +1190,7 @@ class LoaderDialog(QDialog, FORM_CLASS):
                                     format='GTiff',
                                     outputBounds=bounds,
                                     cutlineDSName=temp_mask_path,
-                                    cropToCutline=True,
+                                    cropToCutline=not use_canvas_crop,
                                     dstSRS=raster_crs.authid() if raster_crs.isValid() else None,
                                     warpOptions=['NUM_THREADS=ALL_CPUS'],
                                     creationOptions=['COMPRESS=JPEG', 'JPEG_QUALITY=80', 'TILED=YES', 'NUM_THREADS=ALL_CPUS'],
@@ -987,8 +1219,21 @@ class LoaderDialog(QDialog, FORM_CLASS):
 
                                         ds = gdal.Open(dest_mbtiles_path, gdal.GA_Update)
                                         if ds:
-                                            ds.BuildOverviews("NEAREST", [2, 4, 8], callback=ov_cb)
+                                            # Build overviews down to zoom 10 (zoom 18 down to 10: factors 2..256)
+                                            ds.BuildOverviews("NEAREST", [2, 4, 8, 16, 32, 64, 128, 256], callback=ov_cb)
                                             ds = None
+
+                                        # Set minzoom to 10 and maxzoom to 18 in MBTiles metadata
+                                        try:
+                                            import sqlite3
+                                            conn_mb = sqlite3.connect(dest_mbtiles_path)
+                                            cur_mb = conn_mb.cursor()
+                                            cur_mb.execute("DELETE FROM metadata WHERE name IN ('minzoom', 'maxzoom')")
+                                            cur_mb.execute("INSERT INTO metadata (name, value) VALUES ('minzoom', '10'), ('maxzoom', '18')")
+                                            conn_mb.commit()
+                                            conn_mb.close()
+                                        except Exception as me:
+                                            print(f"Failed to update MBTiles zoom metadata: {me}")
 
                                         if mask_key and os.path.exists(dest_mbtiles_path):
                                             mbtiles_cache[mask_key] = dest_mbtiles_path
@@ -997,7 +1242,7 @@ class LoaderDialog(QDialog, FORM_CLASS):
                                             except Exception as ce:
                                                 print(f"Warning: Failed to save to basemap cache: {ce}")
 
-                                        new_raster = QgsRasterLayer(dest_mbtiles_path, raster_layer.name(), "gdal")
+                                        new_raster = QgsRasterLayer(dest_mbtiles_path, layer_disp_name, "gdal")
                                         if new_raster.isValid():
                                             temp_project.addMapLayer(new_raster, False)
                                             basemap_group.insertLayer(0, new_raster)
@@ -1058,17 +1303,18 @@ class LoaderDialog(QDialog, FORM_CLASS):
                 return
 
             if not layer:
-                self.log("Reference layer 'Selected SSU_Ref' not found in project.", "ERROR")
+                self.log("Sample layer not found in project.", "ERROR")
                 return
 
-            idx = layer.fields().lookupField("PSU_Name")
+            f_psu_field = self.find_layer_field(layer, "PSU_Name", ["PSU_number", "PSU"])
+            idx = layer.fields().lookupField(f_psu_field) if f_psu_field else -1
             if idx == -1:
-                self.log("Field 'PSU_Name' not found in Selected SSU_Ref.", "ERROR")
+                self.log("Field 'PSU_Name' not found in Sample layer.", "ERROR")
                 return
 
             psu_names = sorted({self._clean(str(f[idx])) for f in layer.getFeatures() if f[idx] not in (None, "")})
             if not psu_names:
-                self.log("No PSU_Name values found in Reference layer.", "ERROR")
+                self.log("No PSU_Name values found in Sample layer.", "ERROR")
                 return
 
             if single_psu_only:

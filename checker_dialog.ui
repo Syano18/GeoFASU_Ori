@@ -17,7 +17,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>GeoFASU_Mod - Data Quality Checker</string>
+   <string>GeoFASU_Ori - Data Quality Checker</string>
   </property>
   <layout class="QVBoxLayout" name="rootLayout">
    <property name="spacing">

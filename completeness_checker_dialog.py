@@ -1,6 +1,6 @@
 # Developer: TechCraft by Chano
 # email: c.dacpano@psa.gov.ph
-# GeoFASU_Mod - Completeness Checker Module
+# GeoFASU_Ori - Completeness Checker Module
 
 import os
 import re
