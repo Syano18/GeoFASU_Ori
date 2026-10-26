@@ -653,25 +653,31 @@ class LoaderDialog(QDialog, FORM_CLASS):
             self.load_successful = True
             self.loadbtn.setEnabled(True)
             QCoreApplication.processEvents()
-            # Zoom to Barangay Boundary layer (Base Layer)
-            bgy_lyr = None
-            if 'Base Layer' in groups:
+            # Zoom to Selected SSU sample points (or fallback to Barangay Boundary)
+            zoom_lyr = None
+            if smp_layer and smp_layer.isValid() and smp_layer.featureCount() > 0:
+                zoom_lyr = smp_layer
+            elif 'Base Layer' in groups:
                 for child in groups['Base Layer'].children():
                     if isinstance(child, QgsLayerTreeLayer):
                         lyr = child.layer()
                         if lyr and lyr.isValid():
-                            bgy_lyr = lyr
+                            zoom_lyr = lyr
                             break
 
-            if bgy_lyr and self.iface and self.iface.mapCanvas():
+            if zoom_lyr and self.iface and self.iface.mapCanvas():
                 canvas = self.iface.mapCanvas()
-                ext = bgy_lyr.extent()
+                ext = zoom_lyr.extent()
                 if ext and not ext.isEmpty():
-                    if canvas.mapSettings().destinationCrs() != bgy_lyr.crs():
+                    if canvas.mapSettings().destinationCrs() != zoom_lyr.crs():
                         from qgis.core import QgsCoordinateTransform
-                        xform = QgsCoordinateTransform(bgy_lyr.crs(), canvas.mapSettings().destinationCrs(), QgsProject.instance())
+                        xform = QgsCoordinateTransform(zoom_lyr.crs(), canvas.mapSettings().destinationCrs(), QgsProject.instance())
                         ext = xform.transformBoundingBox(ext)
-                    ext.scale(1.05)
+                    if ext.width() == 0 or ext.height() == 0:
+                        ext = ext.buffered(500)
+                    else:
+                        buf = max(ext.width(), ext.height()) * 0.25
+                        ext = ext.buffered(buf)
                     canvas.setExtent(ext)
                     canvas.refresh()
             elif 'Basemap' in groups and self.iface and self.iface.mapCanvas():
@@ -1149,26 +1155,32 @@ class LoaderDialog(QDialog, FORM_CLASS):
                                 mask_memory_layer, temp_mask_path, "UTF-8", raster_crs, "GPKG"
                             )
 
-                            # Determine bounds: prioritize current map canvas extent
+                            # Determine bounds: prioritize current map canvas extent intersected with mask
                             canvas = self.iface.mapCanvas() if hasattr(self, 'iface') and self.iface else None
                             mbtiles_extent = None
-                            use_canvas_crop = False
-                            if canvas:
+                            mask_ext = mask_memory_layer.extent()
+
+                            if canvas and canvas.extent() and not canvas.extent().isEmpty():
                                 c_ext = canvas.extent()
-                                if c_ext and not c_ext.isEmpty():
-                                    c_crs = canvas.mapSettings().destinationCrs()
-                                    if c_crs.isValid() and raster_crs.isValid() and c_crs != raster_crs:
-                                        from qgis.core import QgsCoordinateTransform
-                                        xform_canvas = QgsCoordinateTransform(c_crs, raster_crs, temp_project.transformContext())
-                                        mbtiles_extent = xform_canvas.transformBoundingBox(c_ext)
-                                    else:
-                                        mbtiles_extent = c_ext
-                                    use_canvas_crop = True
+                                c_crs = canvas.mapSettings().destinationCrs()
+                                if c_crs.isValid() and raster_crs.isValid() and c_crs != raster_crs:
+                                    from qgis.core import QgsCoordinateTransform
+                                    xform_canvas = QgsCoordinateTransform(c_crs, raster_crs, temp_project.transformContext())
+                                    c_ext_raster = xform_canvas.transformBoundingBox(c_ext)
+                                else:
+                                    c_ext_raster = c_ext
+
+                                # If canvas extent intersects mask extent, use the intersection
+                                # (if zoomed in, uses zoomed view; if zoomed out, clips to the mask)
+                                if mask_ext and not mask_ext.isEmpty() and c_ext_raster.intersects(mask_ext):
+                                    mbtiles_extent = c_ext_raster.intersect(mask_ext)
+                                else:
+                                    mbtiles_extent = c_ext_raster
 
                             if not mbtiles_extent or mbtiles_extent.isEmpty():
-                                mbtiles_extent = mask_memory_layer.extent()
+                                mbtiles_extent = mask_ext if (mask_ext and not mask_ext.isEmpty()) else None
 
-                            bounds = [mbtiles_extent.xMinimum(), mbtiles_extent.yMinimum(), mbtiles_extent.xMaximum(), mbtiles_extent.yMaximum()]
+                            bounds = [mbtiles_extent.xMinimum(), mbtiles_extent.yMinimum(), mbtiles_extent.xMaximum(), mbtiles_extent.yMaximum()] if mbtiles_extent else None
 
                             temp_tif_path = os.path.join(
                                 tempfile.gettempdir(),
@@ -1178,6 +1190,9 @@ class LoaderDialog(QDialog, FORM_CLASS):
                             try:
                                 gdal.SetCacheMax(1024 * 1024 * 1024)
                                 gdal.SetConfigOption('GDAL_NUM_THREADS', 'ALL_CPUS')
+                                gdal.SetConfigOption('OGR_SQLITE_SYNCHRONOUS', 'OFF')
+                                gdal.SetConfigOption('SQLITE_USE_WAL', 'NO')
+                                gdal.SetConfigOption('OGR_SQLITE_CACHE', '512')
 
                                 def warp_cb(complete, message, unknown):
                                     p = int(20 + complete * 20)
@@ -1190,10 +1205,10 @@ class LoaderDialog(QDialog, FORM_CLASS):
                                     format='GTiff',
                                     outputBounds=bounds,
                                     cutlineDSName=temp_mask_path,
-                                    cropToCutline=not use_canvas_crop,
+                                    cropToCutline=True,
                                     dstSRS=raster_crs.authid() if raster_crs.isValid() else None,
                                     warpOptions=['NUM_THREADS=ALL_CPUS'],
-                                    creationOptions=['COMPRESS=JPEG', 'JPEG_QUALITY=80', 'TILED=YES', 'NUM_THREADS=ALL_CPUS'],
+                                    creationOptions=['TILED=YES', 'BIGTIFF=IF_SAFER', 'NUM_THREADS=ALL_CPUS'],
                                     callback=warp_cb
                                 )
 
@@ -1207,7 +1222,7 @@ class LoaderDialog(QDialog, FORM_CLASS):
                                         dest_mbtiles_path,
                                         temp_tif_path,
                                         format='MBTILES',
-                                        creationOptions=['TILE_FORMAT=JPEG', 'QUALITY=80', 'ZOOM_LEVEL_STRATEGY=AUTO'],
+                                        creationOptions=['TILE_FORMAT=JPEG', 'QUALITY=75', 'ZOOM_LEVEL_STRATEGY=AUTO'],
                                         callback=trans_cb
                                     )
 
