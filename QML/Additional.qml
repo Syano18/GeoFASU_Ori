@@ -146,12 +146,12 @@
   </elevation>
   <renderer-v2 symbollevels="0" enableorderby="0" referencescale="-1" forceraster="0" type="RuleRenderer">
     <rules key="{1c123b2b-b5f6-4575-96ed-f75fb152adec}">
-      <rule filter="(&quot;Update Codes&quot; is null or &quot;Update Codes&quot; = 0) and Selected_SSU = '1 - Sample SSU'" label="Original Sample" symbol="0" key="{b55a105a-47c0-4520-ba3e-90425bf6cafd}"/>
-      <rule filter="&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9) and Selected_SSU = '1 - Sample SSU'" label="Updated Original Sample" symbol="1" key="{b4f3845e-331b-4cc3-bfa5-1e023ead1a6b}"/>
-      <rule filter="(&quot;Update Codes&quot; is null or &quot;Update Codes&quot; = 0) and Selected_SSU = '2 - Replacement SSU'" label="Unused Replacement Sample" symbol="2" key="{818a018a-7014-45cf-a1fd-8d0e5f6f4aa7}"/>
-      <rule filter="(&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9)) and Selected_SSU = '2 - Replacement SSU'" label="Used Replacement Sample" symbol="3" key="{bc14380d-4bc7-4a2f-9a6e-fe3255288662}"/>
-      <rule filter="(&quot;Update Codes&quot; is null or &quot;Update Codes&quot; = 0) and Selected_SSU = '3 - Additional Replacement SSU'" label="Unused Additional Replacement Sample" symbol="4" key="{69f4a5b0-953f-422e-a57e-7c774862a5d0}"/>
-      <rule filter="(&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9)) and Selected_SSU = '3 - Additional Replacement SSU'" label="Used Additional Replacement Sample" symbol="5" key="{ffdacc01-2f4e-482f-8009-8fcf5d2a965b}"/>
+      <rule filter="(&quot;Update Codes&quot; is null or &quot;Update Codes&quot; = 0 or &quot;Update Codes&quot; = '') and (Selected_SSU = 1 or Selected_SSU LIKE '1%')" label="Original Sample" symbol="0" key="{b55a105a-47c0-4520-ba3e-90425bf6cafd}"/>
+      <rule filter="&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9) and (Selected_SSU = 1 or Selected_SSU LIKE '1%')" label="Updated Original Sample" symbol="1" key="{b4f3845e-331b-4cc3-bfa5-1e023ead1a6b}"/>
+      <rule filter="(&quot;Update Codes&quot; is null or &quot;Update Codes&quot; = 0 or &quot;Update Codes&quot; = '') and (Selected_SSU = 2 or Selected_SSU LIKE '2%')" label="Unused Replacement Sample" symbol="2" key="{818a018a-7014-45cf-a1fd-8d0e5f6f4aa7}"/>
+      <rule filter="(&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9)) and (Selected_SSU = 2 or Selected_SSU LIKE '2%')" label="Used Replacement Sample" symbol="3" key="{bc14380d-4bc7-4a2f-9a6e-fe3255288662}"/>
+      <rule filter="(&quot;Update Codes&quot; is null or &quot;Update Codes&quot; = 0 or &quot;Update Codes&quot; = '') and (Selected_SSU = 3 or Selected_SSU LIKE '3%')" label="Unused Additional Replacement Sample" symbol="4" key="{69f4a5b0-953f-422e-a57e-7c774862a5d0}"/>
+      <rule filter="(&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9)) and (Selected_SSU = 3 or Selected_SSU LIKE '3%')" label="Used Additional Replacement Sample" symbol="5" key="{ffdacc01-2f4e-482f-8009-8fcf5d2a965b}"/>
     </rules>
     <symbols>
       <symbol alpha="1" force_rhr="0" is_animated="0" frame_rate="10" name="0" clip_to_extent="1" type="marker">

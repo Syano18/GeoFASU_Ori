@@ -224,7 +224,11 @@ class GeoFASUDialog(QDialog, FORM_CLASS):
                     continue
 
                 layer_fields = dest_layer.fields()
-                field_map = {f.name().lower(): f.name() for f in layer_fields}
+                field_map = {}
+                for f in layer_fields:
+                    fname = f.name()
+                    field_map[fname.lower()] = fname
+                    field_map[fname.lower().replace(" ", "_").replace("-", "_")] = fname
 
                 features = []
                 for _, row in group_rep.iterrows():
@@ -241,42 +245,49 @@ class GeoFASUDialog(QDialog, FORM_CLASS):
                     for col in group_rep.columns:
                         if col in ("WKT", "_sheet_source"):
                             continue
-                        col_lower = str(col).strip().lower()
-                        if col_lower in field_map:
-                            target_field = field_map[col_lower]
+                        col_clean = str(col).strip()
+                        col_lower = col_clean.lower()
+                        col_norm = col_lower.replace(" ", "_").replace("-", "_")
+                        target_field = field_map.get(col_lower) or field_map.get(col_norm)
+                        if target_field:
                             val = row[col]
                             if pd.notna(val) and str(val).strip() != "":
-                                if target_field == "Selected_SSU":
+                                if target_field.lower().replace(" ", "_") == "selected_ssu":
                                     s_val = str(val).strip()
-                                    if s_val in ("1", "1.0"):
-                                        val = "1 - Sample SSU"
-                                    elif s_val in ("2", "2.0"):
-                                        val = "2 - Replacement SSU"
-                                    elif s_val in ("3", "3.0"):
-                                        val = "3 - Additional Replacement SSU"
+                                    if s_val in ("1", "1.0") or "sample" in s_val.lower():
+                                        val = "1"
+                                    elif s_val in ("2", "2.0") or "replacement" in s_val.lower():
+                                        val = "2"
+                                    elif s_val in ("3", "3.0") or "additional" in s_val.lower():
+                                        val = "3"
+                                    else:
+                                        try:
+                                            val = str(int(float(s_val)))
+                                        except (ValueError, TypeError):
+                                            val = "1"
                                 feat.setAttribute(target_field, val)
 
-                    # Ensure Selected_SSU is set
-                    if "selected_ssu" in field_map:
-                        target_ssu = field_map["selected_ssu"]
+                    # Ensure Selected_SSU is set (must have value of only 1 for Sample SSU, 2 for Replacement)
+                    target_ssu = field_map.get("selected_ssu")
+                    if target_ssu:
                         curr_ssu = feat.attribute(target_ssu)
                         if curr_ssu is None or str(curr_ssu).strip() in ("", "NULL", "None"):
                             sheet_src = row.get("_sheet_source", "Sample SSU")
                             if sheet_src == "Replacement SSU":
-                                feat.setAttribute(target_ssu, "2 - Replacement SSU")
+                                feat.setAttribute(target_ssu, "2")
                             else:
-                                feat.setAttribute(target_ssu, "1 - Sample SSU")
+                                feat.setAttribute(target_ssu, "1")
 
                     # Ensure inCentroid is set (default 2 for valid WKT)
-                    if "incentroid" in field_map:
-                        target_inc = field_map["incentroid"]
+                    target_inc = field_map.get("incentroid")
+                    if target_inc:
                         curr_inc = feat.attribute(target_inc)
                         if curr_inc is None or str(curr_inc).strip() in ("", "NULL", "None"):
-                            feat.setAttribute(target_inc, 2)
+                            feat.setAttribute(target_inc, "2")
 
                     # Ensure orig_wkt is set
-                    if "orig_wkt" in field_map:
-                        target_orig = field_map["orig_wkt"]
+                    target_orig = field_map.get("orig_wkt")
+                    if target_orig:
                         curr_orig = feat.attribute(target_orig)
                         if curr_orig is None or str(curr_orig).strip() in ("", "NULL", "None"):
                             feat.setAttribute(target_orig, str(wkt_val).strip())
