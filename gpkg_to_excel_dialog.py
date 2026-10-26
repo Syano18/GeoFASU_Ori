@@ -433,10 +433,10 @@ class GpkgToExcelDialog(QDialog, FORM_CLASS):
                 final_df = pd.concat(df_list, ignore_index=True)
                 final_df = final_df.fillna("")
 
-                # Renumber fid sequentially if present so rows have unique IDs
-                for fid_col in ['fid', 'FID']:
-                    if fid_col in final_df.columns:
-                        final_df[fid_col] = range(1, len(final_df) + 1)
+                # Remove fid column from exported Excel
+                cols_to_drop = [c for c in ['fid', 'FID'] if c in final_df.columns]
+                if cols_to_drop:
+                    final_df = final_df.drop(columns=cols_to_drop)
 
                 final_df.to_excel(excel_path, index=False)
                 total_records = len(final_df)

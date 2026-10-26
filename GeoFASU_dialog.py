@@ -243,7 +243,7 @@ class GeoFASUDialog(QDialog, FORM_CLASS):
                     feat.setGeometry(geom)
 
                     for col in group_rep.columns:
-                        if col in ("WKT", "_sheet_source"):
+                        if col in ("WKT", "_sheet_source") or str(col).strip().lower() in ("wkt", "_sheet_source", "fid"):
                             continue
                         col_clean = str(col).strip()
                         col_lower = col_clean.lower()

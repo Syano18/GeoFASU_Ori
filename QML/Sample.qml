@@ -729,7 +729,7 @@
   <referencedLayers/>
   <fieldConfiguration>
     <field name="fid" configurationFlags="NoFlag">
-      <editWidget type="TextEdit">
+      <editWidget type="Hidden">
         <config>
           <Option/>
         </config>
@@ -1293,7 +1293,7 @@
     <constraint field="Selected_SSU" desc="" exp=""/>
     <constraint field="inCentroid" desc="" exp=""/>
     <constraint field="orig_wkt" desc="" exp=""/>
-    <constraint field="Update Codes" desc="Move the geotagged point to the correct location" exp="CASE&#xd;&#xa;&#xd;&#xa;WHEN inCentroid = 0 THEN&#xd;&#xa;&#xd;&#xa;&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9)&#xd;&#xa;&#xd;&#xa;WHEN inCentroid = 1 THEN&#xd;&#xa;&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9) AND not intersects($geometry, geom_from_wkt(orig_wkt))&#xd;&#xa;&#xd;&#xa;end"/>
+    <constraint field="Update Codes" desc="Move the geotagged point to the correct location" exp="CASE&#xd;&#xa;&#xd;&#xa;WHEN inCentroid in (0, 2, '0', '2') THEN&#xd;&#xa;&#xd;&#xa;&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9)&#xd;&#xa;&#xd;&#xa;WHEN inCentroid in (1, '1') THEN&#xd;&#xa;&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9) AND not intersects($geometry, geom_from_wkt(orig_wkt))&#xd;&#xa;&#xd;&#xa;ELSE&#xd;&#xa;&quot;Update Codes&quot; in (0,1,2,3,4,5,6,8,9)&#xd;&#xa;end"/>
     <constraint field="UC_2_ind" desc="" exp="CASE&#xd;&#xa;WHEN &quot;Update Codes&quot; = 2 THEN UC_2_ind in (1,2,3)&#xd;&#xa;else&#xd;&#xa;UC_2_ind is null or UC_2_ind is not NULL&#xd;&#xa;end "/>
     <constraint field="uc_6_ind" desc="" exp="CASE&#xd;&#xa;WHEN &quot;Update Codes&quot; = 6 THEN uc_6_ind in (1,2)&#xd;&#xa;ELSE&#xd;&#xa;uc_6_ind is null or uc_6_ind is not NULL&#xd;&#xa;end "/>
     <constraint field="n_hhhead" desc="" exp="CASE&#xd;&#xa;WHEN &quot;Update Codes&quot; IN (1,3,5) THEN  &quot;n_hhhead&quot; IS NOT NULL and length(n_hhhead) > 5&#xd;&#xa;WHEN &quot;Update Codes&quot; = 2 and (UC_2_ind = 1 or UC_2_ind = 3) THEN&#xd;&#xa;n_hhhead is not NULL and length(n_hhhead) > 5&#xd;&#xa;WHEN &quot;Update Codes&quot; = 6 and uc_6_ind = 1 THEN &quot;n_hhhead&quot; IS NOT NULL and length(n_hhhead) > 5&#xd;&#xa;WHEN &quot;Update Codes&quot; = 2 and UC_2_ind = 2 and  m_uc = 2 THEN length(n_hhhead) > 5&#xd;&#xa;else &#xd;&#xa;&quot;n_hhhead&quot;  is null or  &quot;n_hhhead&quot;  is not NULL&#xd;&#xa;end "/>
@@ -1337,7 +1337,7 @@
       <column type="field" hidden="0" width="-1" name="n_address"/>
       <column type="field" hidden="0" width="-1" name="n_husn"/>
       <column type="field" hidden="0" width="-1" name="n_hsn"/>
-      <column type="field" hidden="0" width="-1" name="fid"/>
+      <column type="field" hidden="1" width="-1" name="fid"/>
       <column type="field" hidden="0" width="-1" name="uc_6_ind"/>
       <column type="field" hidden="0" width="-1" name="m_uc_ind"/>
       <column type="field" hidden="0" width="-1" name="m_uc"/>

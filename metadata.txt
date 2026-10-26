@@ -3,7 +3,7 @@ name=GeoFASU_Ori
 qgisMinimumVersion=3.36
 supportsQt6=True
 description="Original Design field data collection, Preprocessing and Postprocessing modules, and quality checking"
-version=1.0.5
+version=1.0.6
 
 # tags are comma separated with spaces allowed
 tags=Generator, Convert, python, development, developer, QField, Android, Windows, mobile, smartphone, tablet, field, fieldwork, GPS, offline, qfieldsync, simple, collaborative, checker, validation

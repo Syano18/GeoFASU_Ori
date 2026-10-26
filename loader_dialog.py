@@ -632,6 +632,22 @@ class LoaderDialog(QDialog, FORM_CLASS):
                 cfg.setIndividualLayerSettings(layer, ils)
                 QgsProject.instance().setSnappingConfig(cfg)
 
+                # Ensure fid is hidden on Selected SSU layer
+                f_idx = layer.fields().indexOf("fid")
+                if f_idx != -1:
+                    from qgis.core import QgsEditorWidgetSetup
+                    layer.setEditorWidgetSetup(f_idx, QgsEditorWidgetSetup("Hidden", {}))
+                t_cfg = layer.attributeTableConfig()
+                cols = t_cfg.columns()
+                changed = False
+                for col in cols:
+                    if col.name.lower() == "fid":
+                        col.hidden = True
+                        changed = True
+                if changed:
+                    t_cfg.setColumns(cols)
+                    layer.setAttributeTableConfig(t_cfg)
+
             # Filter Selected SSU layer by Replicate No. and/or PSU Name
             smp_layer = self.get_sample_layer()
             if smp_layer and smp_layer.isValid():
@@ -739,6 +755,21 @@ class LoaderDialog(QDialog, FORM_CLASS):
                             lyr.loadNamedStyle(qml_path)
                             if orig_subset:
                                 lyr.setSubsetString(orig_subset)
+                            # Ensure fid is hidden from attribute table and forms
+                            f_idx = lyr.fields().indexOf("fid")
+                            if f_idx != -1:
+                                from qgis.core import QgsEditorWidgetSetup
+                                lyr.setEditorWidgetSetup(f_idx, QgsEditorWidgetSetup("Hidden", {}))
+                            t_cfg = lyr.attributeTableConfig()
+                            cols = t_cfg.columns()
+                            changed = False
+                            for col in cols:
+                                if col.name.lower() == "fid":
+                                    col.hidden = True
+                                    changed = True
+                            if changed:
+                                t_cfg.setColumns(cols)
+                                lyr.setAttributeTableConfig(t_cfg)
                             lyr.triggerRepaint()
 
             self.progbar.setValue(25)
